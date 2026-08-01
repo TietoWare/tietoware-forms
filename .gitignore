@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.tgz
+forms.generated.ts
+*.generated.ts
+.DS_Store
