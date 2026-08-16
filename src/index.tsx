@@ -260,7 +260,8 @@ function validationMessage(error: ErrorObject): string {
 function groupErrors(errors: FieldError[]): Record<string, string[]> {
   const grouped: Record<string, string[]> = {};
   for (const error of errors) {
-    const field = error.path.replace(/^\//, "").split("/")[0]?.replace(/~1/g, "/").replace(/~0/g, "~");
+    const segments = error.path.replace(/^\//, "").split("/").map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
+    const field = segments[0] === "values" ? segments[1] : segments[0];
     if (field) (grouped[field] ??= []).push(error.message);
   }
   return grouped;

@@ -71,7 +71,10 @@ export function validateSchemaResponse(value: unknown): GeneratedForm {
   }
   if (!isRecord(ui) || !isRecord(controls)) throw new Error("Schema response is missing ui or controls settings.");
 
-  const apiFormat = Object.keys(ui).some((key) => key.startsWith("ui:"));
+  const schemaProperties = schema.properties as Record<string, unknown>;
+  const apiFormat = Object.keys(ui).some((key) => key.startsWith("ui:")
+    || (Object.hasOwn(schemaProperties, key) && hasApiFieldSettings(ui[key])))
+    || Object.keys(controls).some((key) => API_CONTROL_KEYS.has(key));
   if (apiFormat) return validateApiSchemaResponse({ id, checksum, schema, ui, controls });
 
   rejectUnknownKeys(ui, UI_KEYS, "ui");
@@ -121,7 +124,7 @@ function validateApiSchemaResponse(value: {
   validateJsonSchemaProperties(value.schema);
   rejectUnknownKeys(value.controls, API_CONTROL_KEYS, "controls");
   validateApiUi(value.ui, value.schema.properties as Record<string, unknown>);
-  validateApiControls(value.controls);
+  validateApiControls(value.controls, value.schema.properties as Record<string, unknown>);
 
   const publicPayload = { schema: value.schema, ui: value.ui, controls: value.controls };
   if (checksumFor(publicPayload) !== value.checksum) {
@@ -158,7 +161,7 @@ function validateApiUi(ui: Record<string, unknown>, properties: Record<string, u
       continue;
     }
     if (key === "ui:submitButtonOptions") {
-      if (!isRecord(setting) || (setting.submitText !== undefined && typeof setting.submitText !== "string")) {
+      if (!isRecord(setting) || Object.keys(setting).some((option) => option !== "submitText") || typeof setting.submitText !== "string") {
         throw new Error("ui.ui:submitButtonOptions must be an object.");
       }
       continue;
@@ -171,23 +174,35 @@ function validateApiUi(ui: Record<string, unknown>, properties: Record<string, u
       if (["ui:placeholder", "ui:autocomplete"].includes(settingKey) && typeof settingValue !== "string") {
         throw new Error(`ui.${key}.${settingKey} must be a string.`);
       }
-      if (settingKey === "ui:widget" && settingValue !== "textarea") throw new Error(`Unknown control type: ${String(settingValue)}.`);
-      if (settingKey === "ui:options" && (!isRecord(settingValue) || (settingValue.rows !== undefined && (typeof settingValue.rows !== "number" || !Number.isInteger(settingValue.rows) || settingValue.rows < 1)))) {
-        throw new Error(`ui.${key}.ui:options must contain a positive integer rows value.`);
+      if (settingKey === "ui:widget" && typeof settingValue !== "string") throw new Error(`ui.${key}.ui:widget must be a string.`);
+      if (settingKey === "ui:options" && (!isRecord(settingValue)
+        || Object.keys(settingValue).some((option) => option !== "rows")
+        || typeof settingValue.rows !== "number"
+        || !Number.isInteger(settingValue.rows)
+        || settingValue.rows < 1
+        || settingValue.rows > 20)) {
+        throw new Error(`ui.${key}.ui:options.rows must be an integer between 1 and 20.`);
       }
     }
   }
 }
 
-function validateApiControls(controls: Record<string, unknown>): void {
+function validateApiControls(controls: Record<string, unknown>, properties: Record<string, unknown>): void {
   const honeypot = controls.honeypot_field;
-  if (honeypot !== undefined && (typeof honeypot !== "string" || !honeypot)) throw new Error("controls.honeypot_field must be a non-empty string.");
+  if (honeypot !== undefined && (typeof honeypot !== "string" || !/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(honeypot))) {
+    throw new Error("controls.honeypot_field must be a snake_case field name.");
+  }
+  if (typeof honeypot === "string" && Object.hasOwn(properties, honeypot)) {
+    throw new Error("controls.honeypot_field must not be a schema field.");
+  }
   const minimum = controls.minimum_completion_seconds;
-  if (minimum !== undefined && (typeof minimum !== "number" || !Number.isFinite(minimum) || minimum < 0)) {
-    throw new Error("controls.minimum_completion_seconds must be a non-negative number.");
+  if (minimum !== undefined && (typeof minimum !== "number" || !Number.isInteger(minimum) || minimum < 0 || minimum > 60)) {
+    throw new Error("controls.minimum_completion_seconds must be an integer between 0 and 60.");
   }
   const maximum = controls.maximum_payload_bytes;
-  if (maximum !== undefined && (typeof maximum !== "number" || !Number.isInteger(maximum) || maximum < 1)) throw new Error("controls.maximum_payload_bytes must be a positive integer.");
+  if (maximum !== undefined && (typeof maximum !== "number" || !Number.isInteger(maximum) || maximum < 1_024 || maximum > 1_048_576)) {
+    throw new Error("controls.maximum_payload_bytes must be an integer between 1024 and 1048576.");
+  }
 }
 
 function normalizeApiSettings(ui: Record<string, unknown>, controls: Record<string, unknown>): Pick<GeneratedForm, "ui" | "controls" | "security"> {
@@ -220,7 +235,7 @@ function normalizeApiSettings(ui: Record<string, unknown>, controls: Record<stri
 }
 
 export function checksumFor(value: unknown): string {
-  return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
+  return createHash("sha256").update(stableStringify(value), "utf8").digest("hex");
 }
 
 export function stableStringify(value: unknown): string {
@@ -228,9 +243,25 @@ export function stableStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
 
   return `{${Object.entries(value as Record<string, unknown>)
-    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+    .sort(([left], [right]) => compareUnicodeCodePoints(left, right))
     .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
     .join(",")}}`;
+}
+
+function compareUnicodeCodePoints(left: string, right: string): number {
+  const leftPoints = Array.from(left, (character) => character.codePointAt(0) ?? 0);
+  const rightPoints = Array.from(right, (character) => character.codePointAt(0) ?? 0);
+  const length = Math.min(leftPoints.length, rightPoints.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftPoint = leftPoints[index]!;
+    const rightPoint = rightPoints[index]!;
+    if (leftPoint !== rightPoint) return leftPoint - rightPoint;
+  }
+  return leftPoints.length - rightPoints.length;
+}
+
+function hasApiFieldSettings(value: unknown): boolean {
+  return isRecord(value) && Object.keys(value).some((setting) => setting.startsWith("ui:"));
 }
 
 export function renderGeneratedModule(form: GeneratedForm): string {

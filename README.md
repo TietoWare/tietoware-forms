@@ -41,7 +41,7 @@ Fetch the schema during the consuming site's build:
 npx tietoware-forms generate --output src/forms.generated.ts
 ```
 
-The generator validates the UUID, JSON Schema Draft 2020-12 document, supported UI controls and a SHA-256 checksum of the canonical public payload. It accepts both the package's original settings format and the TietoWare App `ui:*` format. For an API response, checksum validation happens before its `ui:*` settings are normalized; the checksum input is the compact JSON representation of the original `{ schema, ui, controls }` payload with API key order preserved.
+The generator validates the UUID, JSON Schema Draft 2020-12 document, supported UI controls and a SHA-256 checksum of the canonical public payload. It accepts both the package's original settings format and the TietoWare App `ui:*` format. For an API response, checksum validation happens before its `ui:*` settings are normalized; the checksum input is recursively Unicode-code-point-sorted, compact JSON of the original `{ schema, ui, controls }` payload.
 
 The generated file contains only the form id, checksum, schema, UI settings and controls. It never contains the API URL, key id, HMAC secret or other environment values.
 
@@ -131,8 +131,8 @@ npm run pack:check
 
 1. Update `version` using semantic versioning.
 2. Merge a commit that passes CI.
-3. Create and push a cryptographically signed annotated tag matching the version, for example `v0.1.4`.
-4. The release workflow verifies the tag, repeats all checks, attests the tarball and publishes it to GitHub Packages.
+3. Create and push a cryptographically signed annotated tag matching the version, for example `v0.1.5`.
+4. The release workflow verifies the tag, repeats all checks, publishes to GitHub Packages and confirms the published version with `npm view`.
 
 Published versions are immutable. A form schema change does not require a package release, but it does require rebuilding the consuming Qwik City site so its generated artifact is refreshed.
 

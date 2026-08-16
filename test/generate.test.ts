@@ -100,12 +100,13 @@ describe("schema generator", () => {
     expect(form.security).toEqual({ honeypotField: "website", minimumInteractionMs: 3_000, maxPayloadBytes: 16_384 });
   });
 
-  it("accepts the Kotivalmis API fixture using the API checksum contract", async () => {
+  it("accepts the Kotivalmis API checksum test vector", async () => {
     const fixture = JSON.parse(await readFile(new URL("./fixtures/kotivalmis-schema.json", import.meta.url), "utf8"));
     const form = validateSchemaResponse(fixture);
 
-    expect(form.checksum).toBe("a4b15d59c5f4725ee6bdc80dff9850e132ac6ebea522b052dbbab13d04dc9f75");
-    expect(form.controls.message).toMatchObject({ control: "textarea", rows: 6, order: 2 });
+    expect(form.checksum).toBe("81b605bb5639e4a6e864399c813b3e4f30fd9ce161e7cbc05ef7a2304817fe95");
+    expect(checksumFor({ schema: fixture.schema, ui: fixture.ui, controls: fixture.controls })).toBe(fixture.checksum);
+    expect(form.controls.name).toMatchObject({ placeholder: "Nimi ä" });
     expect(form.security).toEqual({ honeypotField: "website", minimumInteractionMs: 3_000, maxPayloadBytes: 16_384 });
   });
 
@@ -116,5 +117,28 @@ describe("schema generator", () => {
       ...apiPublicPayload,
       ui: { ...apiPublicPayload.ui, "ui:order": ["email", "name", "message"] }
     })).toThrow("checksum");
+  });
+
+  it("enforces documented API ui and controls limits", () => {
+    const invalidRows = {
+      ...apiPublicPayload,
+      ui: { ...apiPublicPayload.ui, message: { "ui:widget": "textarea", "ui:options": { rows: 21 } } }
+    };
+    expect(() => validateSchemaResponse({ id: formId, checksum: checksumFor(invalidRows), ...invalidRows }))
+      .toThrow("between 1 and 20");
+
+    const schemaHoneypot = {
+      ...apiPublicPayload,
+      controls: { ...apiPublicPayload.controls, honeypot_field: "name" }
+    };
+    expect(() => validateSchemaResponse({ id: formId, checksum: checksumFor(schemaHoneypot), ...schemaHoneypot }))
+      .toThrow("must not be a schema field");
+
+    const invalidMinimum = {
+      ...apiPublicPayload,
+      controls: { ...apiPublicPayload.controls, minimum_completion_seconds: 61 }
+    };
+    expect(() => validateSchemaResponse({ id: formId, checksum: checksumFor(invalidMinimum), ...invalidMinimum }))
+      .toThrow("between 0 and 60");
   });
 });
