@@ -26,6 +26,20 @@ const form = {
 };
 const token = createInteractionToken({ formId: form.id, startedAt: now - 2_000, nonce: "interaction-nonce" }, secret);
 
+const apiForm = {
+  id: form.id,
+  checksum: "a".repeat(64),
+  schema: {
+    type: "object" as const,
+    properties: { email: { type: "string" as const, format: "email" } },
+    required: ["email"],
+    additionalProperties: false
+  },
+  ui: {},
+  controls: {},
+  security: { honeypotField: "website", minimumInteractionMs: 3_000, maxPayloadBytes: 512 }
+};
+
 function config(fetch: typeof globalThis.fetch): FormServerConfig {
   return { apiUrl: "https://app.example.fi/api", keyId: "key-id", secret, form, fetch, now: () => now };
 }
@@ -70,5 +84,25 @@ describe("Qwik City submission", () => {
       error: { message: "Tarkista lomakkeen tiedot.", fieldErrors: [{ path: "/email" }] }
     });
     expect(JSON.stringify(result)).not.toContain("Sensitive");
+  });
+
+  it("uses generated API protections and never forwards the honeypot", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json(
+      { submission_id: 43, status: "received" }, { status: 201 }
+    ));
+    const apiConfig: FormServerConfig = { ...config(fetch), form: apiForm };
+    const oldToken = createInteractionToken({ formId: apiForm.id, startedAt: now - 3_000, nonce: "api-nonce" }, secret);
+
+    await expect(submitForm({ values: { email: "a@b.fi", website: "bot" }, interactionToken: oldToken }, apiConfig))
+      .resolves.toMatchObject({ ok: false, error: { code: "bot_detected" } });
+    await expect(submitForm({ values: { email: "a@b.fi", website: "" }, interactionToken: oldToken }, apiConfig))
+      .resolves.toMatchObject({ ok: true });
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({ values: { email: "a@b.fi" } });
+
+    const tooEarlyToken = createInteractionToken({ formId: apiForm.id, startedAt: now - 2_999, nonce: "early-nonce" }, secret);
+    await expect(submitForm({ values: { email: "a@b.fi", website: "" }, interactionToken: tooEarlyToken }, apiConfig))
+      .resolves.toMatchObject({ ok: false, error: { code: "invalid_interaction" } });
+    await expect(submitForm({ values: { email: "x".repeat(800), website: "" }, interactionToken: oldToken }, apiConfig))
+      .resolves.toMatchObject({ ok: false, error: { code: "payload_too_large" } });
   });
 });

@@ -25,6 +25,32 @@ const env = {
   TIETOWARE_FORMS_HMAC_SECRET: "secret"
 };
 
+const apiPublicPayload = {
+  schema: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object" as const,
+    properties: {
+      name: { type: "string" as const },
+      email: { type: "string" as const, format: "email" },
+      message: { type: "string" as const }
+    },
+    required: ["name", "email"],
+    additionalProperties: false
+  },
+  ui: {
+    "ui:order": ["name", "email", "message"],
+    name: { "ui:placeholder": "Nimesi" },
+    email: { "ui:autocomplete": "email" },
+    message: { "ui:widget": "textarea", "ui:options": { rows: 6 } },
+    "ui:submitButtonOptions": { submitText: "Lähetä viesti" }
+  },
+  controls: {
+    honeypot_field: "website",
+    minimum_completion_seconds: 3,
+    maximum_payload_bytes: 16_384
+  }
+};
+
 describe("schema generator", () => {
   it("requires all server secrets", async () => {
     await expect(generateForm({ env: {} })).rejects.toThrow("TIETOWARE_FORMS_API_URL is required");
@@ -55,5 +81,31 @@ describe("schema generator", () => {
     expect(contents).toBe(renderGeneratedModule(responseBody));
     expect(contents).not.toContain(env.TIETOWARE_FORMS_HMAC_SECRET);
     expect(contents).not.toContain(env.TIETOWARE_FORMS_API_URL);
+  });
+
+  it("validates the original API payload and normalizes its ui:* settings", () => {
+    const form = validateSchemaResponse({
+      id: formId,
+      checksum: checksumFor(apiPublicPayload),
+      ...apiPublicPayload
+    });
+
+    expect(form.checksum).toBe(checksumFor(apiPublicPayload));
+    expect(form.ui).toEqual({ submitLabel: "Lähetä viesti" });
+    expect(form.controls).toEqual({
+      name: { order: 0, placeholder: "Nimesi" },
+      email: { order: 1, autocomplete: "email" },
+      message: { order: 2, control: "textarea", rows: 6 }
+    });
+    expect(form.security).toEqual({ honeypotField: "website", minimumInteractionMs: 3_000, maxPayloadBytes: 16_384 });
+  });
+
+  it("rejects a tampered API payload before normalization", () => {
+    expect(() => validateSchemaResponse({
+      id: formId,
+      checksum: checksumFor(apiPublicPayload),
+      ...apiPublicPayload,
+      ui: { ...apiPublicPayload.ui, "ui:order": ["email", "name", "message"] }
+    })).toThrow("checksum");
   });
 });

@@ -72,6 +72,7 @@ export const TietoWareForm = component$<TietoWareFormProps>((props) => {
   });
 
   const fields = orderedFields(props.form);
+  const honeypotField = props.form.security?.honeypotField;
 
   return (
     <form
@@ -133,6 +134,21 @@ export const TietoWareForm = component$<TietoWareFormProps>((props) => {
           </div>
         );
       })}
+
+      {honeypotField ? (
+        <div class="tw-form__honeypot" aria-hidden="true" style={{ position: "absolute", left: "-10000px", width: "1px", height: "1px", overflow: "hidden" }}>
+          <label for={`${formId}-${safeId(honeypotField)}`}>Älä täytä tätä kenttää</label>
+          <input
+            id={`${formId}-${safeId(honeypotField)}`}
+            name={honeypotField}
+            type="text"
+            tabIndex={-1}
+            autoComplete="off"
+            value={stringValue(state.values[honeypotField])}
+            onInput$={(_, element) => { state.values[honeypotField] = element.value; }}
+          />
+        </div>
+      ) : null}
 
       {state.generalError ? <div role="alert" class="tw-form__error">{state.generalError}</div> : null}
       {state.succeeded ? <div role="status">{props.form.ui.successMessage ?? "Kiitos, viestisi on vastaanotettu."}</div> : null}
@@ -214,7 +230,7 @@ export function validateFormValues(form: GeneratedForm, values: FormValues): Rec
   const ajv = new Ajv2020({ allErrors: true, strict: true });
   addFormats(ajv);
   const validate = ajv.compile(form.schema);
-  validate(values);
+  validate(withoutHoneypot(form, values));
   return groupAjvErrors(validate.errors ?? []);
 }
 
@@ -258,10 +274,19 @@ function orderedFields(form: GeneratedForm) {
 }
 
 function initialFormValues(form: GeneratedForm, initial: FormValues | undefined): FormValues {
-  return Object.fromEntries(Object.entries(form.schema.properties).map(([name, property]) => [
+  const values = Object.fromEntries(Object.entries(form.schema.properties).map(([name, property]) => [
     name,
     initial?.[name] ?? property.default ?? (property.type === "boolean" ? false : "")
-  ]));
+  ])) as FormValues;
+  if (form.security?.honeypotField) values[form.security.honeypotField] = initial?.[form.security.honeypotField] ?? "";
+  return values;
+}
+
+function withoutHoneypot(form: GeneratedForm, values: FormValues): FormValues {
+  const field = form.security?.honeypotField;
+  if (!field) return values;
+  const { [field]: _honeypot, ...remaining } = values;
+  return remaining;
 }
 
 function inputType(format: string | undefined, type: string | undefined): string {
@@ -299,6 +324,7 @@ export type {
   FormControlSettings,
   FormControls,
   FormJsonSchema,
+  FormSecuritySettings,
   FormUiSettings,
   FormValues,
   GeneratedForm,

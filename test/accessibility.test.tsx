@@ -59,4 +59,15 @@ describe("accessible form", () => {
       message: ["Arvo on liian lyhyt."]
     });
   });
+
+  it("renders the API honeypot outside the JSON Schema fields", async () => {
+    const protectedForm = { ...form, security: { honeypotField: "website" } };
+    const { screen, render } = await createDOM();
+    await render(<TietoWareForm form={protectedForm} interactionToken="token" onSubmit$={$(() => Promise.resolve({ ok: true }))} /> as JSXNode);
+
+    const honeypot = screen.querySelector("input[name=website]") as HTMLInputElement;
+    expect(honeypot).not.toBeNull();
+    expect(honeypot.autocomplete).toBe("off");
+    expect(validateFormValues(protectedForm, { email: "hello@example.fi", message: "Hei", website: "" })).toEqual({});
+  });
 });

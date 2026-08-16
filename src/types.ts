@@ -51,12 +51,23 @@ export interface FormControlSettings {
 
 export type FormControls = Record<string, FormControlSettings>;
 
+export interface FormSecuritySettings {
+  /** A client-only trap field that must be empty when submitted. */
+  honeypotField?: string;
+  /** Minimum time between creating the interaction token and submitting. */
+  minimumInteractionMs?: number;
+  /** Maximum JSON request-body size accepted by the server handler. */
+  maxPayloadBytes?: number;
+}
+
 export interface GeneratedForm {
   id: string;
   checksum: string;
   schema: FormJsonSchema;
   ui: FormUiSettings;
   controls: FormControls;
+  /** Normalized server-side protection settings supplied by the Forms API. */
+  security?: FormSecuritySettings;
 }
 
 export interface FieldError {

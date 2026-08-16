@@ -46,21 +46,21 @@ export function createQwikCityFormHandler(config: FormServerConfig): RequestHand
 
 export async function submitForm(payload: unknown, config: FormServerConfig): Promise<SubmissionResult> {
   const bodySize = Buffer.byteLength(JSON.stringify(payload), "utf8");
-  if (bodySize > (config.maxPayloadBytes ?? 64 * 1024)) return failure(400, "payload_too_large");
+  if (bodySize > (config.maxPayloadBytes ?? config.form.security?.maxPayloadBytes ?? 64 * 1024)) return failure(400, "payload_too_large");
   if (!isSubmissionPayload(payload)) return failure(400, "invalid_payload");
 
-  const allowedFields = new Set(Object.keys(config.form.schema.properties));
-  const unknownField = Object.keys(payload.values).find((field) => !allowedFields.has(field));
-  if (unknownField) return failure(400, "unknown_field");
-
-  const honeypot = config.honeypotField ?? "company_website";
+  const honeypot = config.honeypotField ?? config.form.security?.honeypotField ?? "company_website";
   if (typeof payload.values[honeypot] === "string" && payload.values[honeypot] !== "") {
     return failure(400, "bot_detected");
   }
+  const values = omitField(payload.values, honeypot);
+  const allowedFields = new Set(Object.keys(config.form.schema.properties));
+  const unknownField = Object.keys(values).find((field) => !allowedFields.has(field));
+  if (unknownField) return failure(400, "unknown_field");
 
   const token = verifyInteractionToken(payload.interactionToken, config.secret);
   const now = (config.now ?? Date.now)();
-  const minimumAge = config.minimumInteractionMs ?? 800;
+  const minimumAge = config.minimumInteractionMs ?? config.form.security?.minimumInteractionMs ?? 800;
   const maximumAge = config.interactionMaxAgeMs ?? 2 * 60 * 60 * 1000;
   if (!token || token.formId !== config.form.id || token.startedAt > now - minimumAge || token.startedAt < now - maximumAge) {
     return failure(400, "invalid_interaction");
@@ -69,11 +69,11 @@ export async function submitForm(payload: unknown, config: FormServerConfig): Pr
   const ajv = new Ajv2020({ allErrors: true, strict: true });
   addFormats(ajv);
   const validate = ajv.compile(config.form.schema);
-  if (!validate(payload.values)) return failure(422, "validation_failed");
+  if (!validate(values)) return failure(422, "validation_failed");
 
   const url = new URL(`/api/v1/forms/${config.form.id}/submissions`, ensureTrailingSlash(config.apiUrl));
   const requestBody = JSON.stringify({
-    values: payload.values,
+    values,
     interaction_token: payload.interactionToken,
     schema_checksum: config.form.checksum
   });
@@ -105,6 +105,11 @@ export async function submitForm(payload: unknown, config: FormServerConfig): Pr
 
   const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
   return { ok: false, status: response.status, error: safeApiError(response.status, responsePayload, retryAfter) };
+}
+
+function omitField(values: Record<string, JsonValue>, field: string): Record<string, JsonValue> {
+  const { [field]: _omitted, ...remaining } = values;
+  return remaining;
 }
 
 function failure(status: number, code: string): SubmissionResult {

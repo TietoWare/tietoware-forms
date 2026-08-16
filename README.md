@@ -41,7 +41,7 @@ Fetch the schema during the consuming site's build:
 npx tietoware-forms generate --output src/forms.generated.ts
 ```
 
-The generator validates the UUID, JSON Schema Draft 2020-12 document, supported UI controls and a SHA-256 checksum of the canonical public payload. The checksum input is the stable, recursively key-sorted JSON representation of `{ schema, ui, controls }`.
+The generator validates the UUID, JSON Schema Draft 2020-12 document, supported UI controls and a SHA-256 checksum of the canonical public payload. It accepts both the package's original settings format and the TietoWare App `ui:*` format. For an API response, checksum validation happens before its `ui:*` settings are normalized; the checksum input remains the stable, recursively key-sorted JSON representation of the original `{ schema, ui, controls }` payload.
 
 The generated file contains only the form id, checksum, schema, UI settings and controls. It never contains the API URL, key id, HMAC secret or other environment values.
 
@@ -86,7 +86,7 @@ const handler = createQwikCityFormHandler({
 export const onPost: RequestHandler = handler;
 ```
 
-`createQwikCityFormHandler` enforces a 64 KiB default payload limit, rejects unknown fields, checks the honeypot and signed interaction token, validates with Ajv, and only then sends an HMAC-signed request to TietoWare App. Limits can be tightened with the server configuration.
+`createQwikCityFormHandler` uses the generated form's API-provided payload limit, minimum completion time and honeypot field when present; otherwise it uses the legacy 64 KiB, 800 ms and `company_website` defaults. Server configuration takes precedence over either. The honeypot is rendered client-side, accepted only locally, then removed before JSON Schema validation and the upstream request.
 
 Create the initial token from server-only code:
 
@@ -131,7 +131,7 @@ npm run pack:check
 
 1. Update `version` using semantic versioning.
 2. Merge a commit that passes CI.
-3. Create and push a cryptographically signed annotated tag matching the version, for example `v0.1.0`.
+3. Create and push a cryptographically signed annotated tag matching the version, for example `v0.1.2`.
 4. The release workflow verifies the tag, repeats all checks, attests the tarball and publishes it to GitHub Packages.
 
 Published versions are immutable. A form schema change does not require a package release, but it does require rebuilding the consuming Qwik City site so its generated artifact is refreshed.

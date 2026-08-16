@@ -8,6 +8,7 @@ import type {
   FormControlSettings,
   FormControls,
   FormJsonSchema,
+  FormSecuritySettings,
   FormUiSettings,
   GeneratedForm
 } from "./types.js";
@@ -17,6 +18,7 @@ const CHECKSUM_PATTERN = /^[0-9a-f]{64}$/;
 const UI_KEYS = new Set(["submitLabel", "successMessage", "formLabel", "layout"]);
 const CONTROL_KEYS = new Set(["control", "label", "placeholder", "autocomplete", "inputMode", "rows", "order"]);
 const CONTROL_TYPES = new Set(["input", "textarea", "select", "checkbox", "hidden"]);
+const API_CONTROL_KEYS = new Set(["honeypot_field", "minimum_completion_seconds", "maximum_payload_bytes"]);
 
 export interface GenerateEnvironment {
   TIETOWARE_FORMS_API_URL?: string;
@@ -69,6 +71,9 @@ export function validateSchemaResponse(value: unknown): GeneratedForm {
   }
   if (!isRecord(ui) || !isRecord(controls)) throw new Error("Schema response is missing ui or controls settings.");
 
+  const apiFormat = Object.keys(ui).some((key) => key.startsWith("ui:"));
+  if (apiFormat) return validateApiSchemaResponse({ id, checksum, schema, ui, controls });
+
   rejectUnknownKeys(ui, UI_KEYS, "ui");
   for (const [field, property] of Object.entries(schema.properties)) {
     if (!isRecord(property)) throw new Error(`Schema property ${field} must be an object.`);
@@ -100,6 +105,118 @@ export function validateSchemaResponse(value: unknown): GeneratedForm {
     ui: ui as unknown as FormUiSettings,
     controls: controls as unknown as FormControls
   };
+}
+
+/**
+ * Validates the API payload before it is transformed.  The API checksum is a
+ * checksum of this exact public shape, not of the package's normalized form.
+ */
+function validateApiSchemaResponse(value: {
+  id: string;
+  checksum: string;
+  schema: Record<string, unknown>;
+  ui: Record<string, unknown>;
+  controls: Record<string, unknown>;
+}): GeneratedForm {
+  validateJsonSchemaProperties(value.schema);
+  rejectUnknownKeys(value.controls, API_CONTROL_KEYS, "controls");
+  validateApiUi(value.ui, value.schema.properties as Record<string, unknown>);
+  validateApiControls(value.controls);
+
+  const publicPayload = { schema: value.schema, ui: value.ui, controls: value.controls };
+  if (checksumFor(publicPayload) !== value.checksum) {
+    throw new Error("Schema response checksum does not match its public payload.");
+  }
+
+  return {
+    id: value.id,
+    checksum: value.checksum,
+    schema: value.schema as unknown as FormJsonSchema,
+    ...normalizeApiSettings(value.ui, value.controls)
+  };
+}
+
+function validateJsonSchemaProperties(schema: Record<string, unknown>): void {
+  for (const [field, property] of Object.entries(schema.properties as Record<string, unknown>)) {
+    if (!isRecord(property)) throw new Error(`Schema property ${field} must be an object.`);
+    if (property.type !== undefined && !["string", "number", "integer", "boolean"].includes(String(property.type))) {
+      throw new Error(`Unsupported schema property type for ${field}.`);
+    }
+  }
+
+  const ajv = new Ajv2020({ allErrors: true, strict: true });
+  addFormats(ajv);
+  if (!ajv.validateSchema(schema)) throw new Error(`Invalid JSON Schema: ${ajv.errorsText(ajv.errors)}.`);
+}
+
+function validateApiUi(ui: Record<string, unknown>, properties: Record<string, unknown>): void {
+  for (const [key, setting] of Object.entries(ui)) {
+    if (key === "ui:order") {
+      if (!Array.isArray(setting) || setting.some((field) => typeof field !== "string" || !Object.hasOwn(properties, field))) {
+        throw new Error("ui.ui:order must contain only schema field names.");
+      }
+      continue;
+    }
+    if (key === "ui:submitButtonOptions") {
+      if (!isRecord(setting) || (setting.submitText !== undefined && typeof setting.submitText !== "string")) {
+        throw new Error("ui.ui:submitButtonOptions must be an object.");
+      }
+      continue;
+    }
+    if (!Object.hasOwn(properties, key) || !isRecord(setting)) throw new Error(`Unknown package feature: ui.${key}.`);
+    for (const [settingKey, settingValue] of Object.entries(setting)) {
+      if (!["ui:placeholder", "ui:autocomplete", "ui:widget", "ui:options"].includes(settingKey)) {
+        throw new Error(`Unknown package feature: ui.${key}.${settingKey}.`);
+      }
+      if (["ui:placeholder", "ui:autocomplete"].includes(settingKey) && typeof settingValue !== "string") {
+        throw new Error(`ui.${key}.${settingKey} must be a string.`);
+      }
+      if (settingKey === "ui:widget" && settingValue !== "textarea") throw new Error(`Unknown control type: ${String(settingValue)}.`);
+      if (settingKey === "ui:options" && (!isRecord(settingValue) || (settingValue.rows !== undefined && (typeof settingValue.rows !== "number" || !Number.isInteger(settingValue.rows) || settingValue.rows < 1)))) {
+        throw new Error(`ui.${key}.ui:options must contain a positive integer rows value.`);
+      }
+    }
+  }
+}
+
+function validateApiControls(controls: Record<string, unknown>): void {
+  const honeypot = controls.honeypot_field;
+  if (honeypot !== undefined && (typeof honeypot !== "string" || !honeypot)) throw new Error("controls.honeypot_field must be a non-empty string.");
+  const minimum = controls.minimum_completion_seconds;
+  if (minimum !== undefined && (typeof minimum !== "number" || !Number.isFinite(minimum) || minimum < 0)) {
+    throw new Error("controls.minimum_completion_seconds must be a non-negative number.");
+  }
+  const maximum = controls.maximum_payload_bytes;
+  if (maximum !== undefined && (typeof maximum !== "number" || !Number.isInteger(maximum) || maximum < 1)) throw new Error("controls.maximum_payload_bytes must be a positive integer.");
+}
+
+function normalizeApiSettings(ui: Record<string, unknown>, controls: Record<string, unknown>): Pick<GeneratedForm, "ui" | "controls" | "security"> {
+  const normalizedControls: FormControls = {};
+  const order = Array.isArray(ui["ui:order"]) ? ui["ui:order"] : [];
+  for (const [index, field] of order.entries()) normalizedControls[field as string] = { order: index };
+
+  for (const [field, settings] of Object.entries(ui)) {
+    if (!isRecord(settings) || field.startsWith("ui:")) continue;
+    const control = normalizedControls[field] ?? {};
+    if (typeof settings["ui:placeholder"] === "string") control.placeholder = settings["ui:placeholder"];
+    if (typeof settings["ui:autocomplete"] === "string") control.autocomplete = settings["ui:autocomplete"];
+    if (settings["ui:widget"] === "textarea") control.control = "textarea";
+    const options = settings["ui:options"];
+    if (isRecord(options) && typeof options.rows === "number") control.rows = options.rows;
+    normalizedControls[field] = control;
+  }
+
+  const submitOptions = ui["ui:submitButtonOptions"];
+  const security: FormSecuritySettings = {};
+  if (typeof controls.honeypot_field === "string") security.honeypotField = controls.honeypot_field;
+  if (typeof controls.minimum_completion_seconds === "number") security.minimumInteractionMs = controls.minimum_completion_seconds * 1_000;
+  if (typeof controls.maximum_payload_bytes === "number") security.maxPayloadBytes = controls.maximum_payload_bytes;
+
+  const normalized = {
+    ui: isRecord(submitOptions) && typeof submitOptions.submitText === "string" ? { submitLabel: submitOptions.submitText } : {},
+    controls: normalizedControls
+  };
+  return Object.keys(security).length > 0 ? { ...normalized, security } : normalized;
 }
 
 export function checksumFor(value: unknown): string {
