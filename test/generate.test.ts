@@ -100,6 +100,15 @@ describe("schema generator", () => {
     expect(form.security).toEqual({ honeypotField: "website", minimumInteractionMs: 3_000, maxPayloadBytes: 16_384 });
   });
 
+  it("accepts the Kotivalmis API fixture using the API checksum contract", async () => {
+    const fixture = JSON.parse(await readFile(new URL("./fixtures/kotivalmis-schema.json", import.meta.url), "utf8"));
+    const form = validateSchemaResponse(fixture);
+
+    expect(form.checksum).toBe("a4b15d59c5f4725ee6bdc80dff9850e132ac6ebea522b052dbbab13d04dc9f75");
+    expect(form.controls.message).toMatchObject({ control: "textarea", rows: 6, order: 2 });
+    expect(form.security).toEqual({ honeypotField: "website", minimumInteractionMs: 3_000, maxPayloadBytes: 16_384 });
+  });
+
   it("rejects a tampered API payload before normalization", () => {
     expect(() => validateSchemaResponse({
       id: formId,

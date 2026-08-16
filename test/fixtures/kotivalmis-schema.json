@@ -1,0 +1,26 @@
+{
+  "id": "123e4567-e89b-42d3-a456-426614174000",
+  "checksum": "a4b15d59c5f4725ee6bdc80dff9850e132ac6ebea522b052dbbab13d04dc9f75",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": { "type": "string" },
+      "email": { "type": "string", "format": "email" },
+      "message": { "type": "string" }
+    },
+    "required": ["name", "email"],
+    "additionalProperties": false
+  },
+  "ui": {
+    "ui:order": ["name", "email", "message"],
+    "name": { "ui:placeholder": "Your name" },
+    "email": { "ui:autocomplete": "email" },
+    "message": { "ui:widget": "textarea", "ui:options": { "rows": 6 } },
+    "ui:submitButtonOptions": { "submitText": "Send message" }
+  },
+  "controls": {
+    "honeypot_field": "website",
+    "minimum_completion_seconds": 3,
+    "maximum_payload_bytes": 16384
+  }
+}

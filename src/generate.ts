@@ -220,7 +220,7 @@ function normalizeApiSettings(ui: Record<string, unknown>, controls: Record<stri
 }
 
 export function checksumFor(value: unknown): string {
-  return createHash("sha256").update(stableStringify(value), "utf8").digest("hex");
+  return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
 }
 
 export function stableStringify(value: unknown): string {
