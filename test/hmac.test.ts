@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { canonicalizeRequest, normalizePathAndQuery, sha256, signRequest } from "../src/hmac.js";
+import { canonicalizeRequest, createInteractionToken, normalizePathAndQuery, sha256, signRequest, verifyInteractionToken } from "../src/hmac.js";
 
 interface Vector {
   name: string;
@@ -35,4 +35,13 @@ describe("HMAC protocol", () => {
       expect(canonicalizeRequest(vector)).toContain(`\n${vector.body_sha256}`);
     });
   }
+
+  it("rejects malformed interaction token timestamps and empty nonces", () => {
+    const secret = "secret";
+    const malformedTimestamp = createInteractionToken({ formId: "form", startedAt: Number.POSITIVE_INFINITY, nonce: "nonce" }, secret);
+    const emptyNonce = createInteractionToken({ formId: "form", startedAt: 1_700_000_000_000, nonce: "" }, secret);
+
+    expect(verifyInteractionToken(malformedTimestamp, secret)).toBeUndefined();
+    expect(verifyInteractionToken(emptyNonce, secret)).toBeUndefined();
+  });
 });

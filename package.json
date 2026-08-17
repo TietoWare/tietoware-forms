@@ -1,6 +1,6 @@
 {
   "name": "@tietoware/forms",
-  "version": "0.1.5",
+  "version": "1.0.0",
   "description": "Schema-driven Qwik City forms for TietoWare App",
   "type": "module",
   "license": "MIT",

@@ -95,7 +95,9 @@ export function verifyInteractionToken(token: string, secret: string): Interacti
     const formId = Reflect.get(parsed, "formId");
     const startedAt = Reflect.get(parsed, "startedAt");
     const nonce = Reflect.get(parsed, "nonce");
-    if (typeof formId !== "string" || typeof startedAt !== "number" || typeof nonce !== "string") return undefined;
+    if (typeof formId !== "string" || !formId
+      || typeof startedAt !== "number" || !Number.isSafeInteger(startedAt) || startedAt < 0
+      || typeof nonce !== "string" || !nonce) return undefined;
     return { formId, startedAt, nonce };
   } catch {
     return undefined;

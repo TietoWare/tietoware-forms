@@ -19,6 +19,7 @@ const UI_KEYS = new Set(["submitLabel", "successMessage", "formLabel", "layout"]
 const CONTROL_KEYS = new Set(["control", "label", "placeholder", "autocomplete", "inputMode", "rows", "order"]);
 const CONTROL_TYPES = new Set(["input", "textarea", "select", "checkbox", "hidden"]);
 const API_CONTROL_KEYS = new Set(["honeypot_field", "minimum_completion_seconds", "maximum_payload_bytes"]);
+const API_WIDGET_TYPES = new Set(["text", "input", "textarea", "select", "checkbox", "hidden"]);
 
 export interface GenerateEnvironment {
   TIETOWARE_FORMS_API_URL?: string;
@@ -174,7 +175,9 @@ function validateApiUi(ui: Record<string, unknown>, properties: Record<string, u
       if (["ui:placeholder", "ui:autocomplete"].includes(settingKey) && typeof settingValue !== "string") {
         throw new Error(`ui.${key}.${settingKey} must be a string.`);
       }
-      if (settingKey === "ui:widget" && typeof settingValue !== "string") throw new Error(`ui.${key}.ui:widget must be a string.`);
+      if (settingKey === "ui:widget" && (typeof settingValue !== "string" || !API_WIDGET_TYPES.has(settingValue))) {
+        throw new Error(`ui.${key}.ui:widget is not supported by this package.`);
+      }
       if (settingKey === "ui:options" && (!isRecord(settingValue)
         || Object.keys(settingValue).some((option) => option !== "rows")
         || typeof settingValue.rows !== "number"
@@ -215,7 +218,10 @@ function normalizeApiSettings(ui: Record<string, unknown>, controls: Record<stri
     const control = normalizedControls[field] ?? {};
     if (typeof settings["ui:placeholder"] === "string") control.placeholder = settings["ui:placeholder"];
     if (typeof settings["ui:autocomplete"] === "string") control.autocomplete = settings["ui:autocomplete"];
-    if (settings["ui:widget"] === "textarea") control.control = "textarea";
+    const widget = settings["ui:widget"];
+    if (widget === "textarea" || widget === "select" || widget === "checkbox" || widget === "hidden") {
+      control.control = widget;
+    }
     const options = settings["ui:options"];
     if (isRecord(options) && typeof options.rows === "number") control.rows = options.rows;
     normalizedControls[field] = control;
@@ -239,7 +245,13 @@ export function checksumFor(value: unknown): string {
 }
 
 export function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (value === null) return "null";
+  if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("Checksum payload must contain only finite JSON numbers.");
+    return JSON.stringify(value);
+  }
+  if (typeof value !== "object") throw new TypeError("Checksum payload must contain only JSON values.");
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
 
   return `{${Object.entries(value as Record<string, unknown>)

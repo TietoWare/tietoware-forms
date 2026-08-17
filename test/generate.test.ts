@@ -161,5 +161,12 @@ describe("schema generator", () => {
     };
     expect(() => validateSchemaResponse({ id: formId, checksum: checksumFor(invalidMinimum), ...invalidMinimum }))
       .toThrow("between 0 and 60");
+
+    const unsupportedWidget = {
+      ...apiPublicPayload,
+      ui: { ...apiPublicPayload.ui, message: { "ui:widget": "calendar" } }
+    };
+    expect(() => validateSchemaResponse({ id: formId, checksum: checksumFor(unsupportedWidget), ...unsupportedWidget }))
+      .toThrow("not supported by this package");
   });
 });

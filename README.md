@@ -131,7 +131,7 @@ npm run pack:check
 
 1. Update `version` using semantic versioning.
 2. Merge a commit that passes CI.
-3. Create and push a cryptographically signed annotated tag matching the version, for example `v0.1.5`.
+3. Create and push a cryptographically signed annotated tag matching the version, for example `v1.0.0`.
 4. The release workflow verifies the tag, repeats all checks, publishes to GitHub Packages and confirms the published version with `npm view`.
 
 Published versions are immutable. A form schema change does not require a package release, but it does require rebuilding the consuming Qwik City site so its generated artifact is refreshed.

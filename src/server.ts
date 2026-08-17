@@ -39,15 +39,27 @@ export function createQwikCityFormHandler(config: FormServerConfig): RequestHand
       return;
     }
 
-    const result = await submitForm(payload, config);
+    let result: SubmissionResult;
+    try {
+      result = await submitForm(payload, config);
+    } catch {
+      result = failure(500, "submission_failed");
+    }
     event.json(result.status, result.ok ? result.data : result.error);
   };
 }
 
 export async function submitForm(payload: unknown, config: FormServerConfig): Promise<SubmissionResult> {
-  const bodySize = Buffer.byteLength(JSON.stringify(payload), "utf8");
-  if (bodySize > (config.maxPayloadBytes ?? config.form.security?.maxPayloadBytes ?? 64 * 1024)) return failure(400, "payload_too_large");
   if (!isSubmissionPayload(payload)) return failure(400, "invalid_payload");
+  let serializedPayload: string;
+  try {
+    serializedPayload = JSON.stringify(payload);
+  } catch {
+    return failure(400, "invalid_payload");
+  }
+  if (Buffer.byteLength(serializedPayload, "utf8") > (config.maxPayloadBytes ?? config.form.security?.maxPayloadBytes ?? 64 * 1024)) {
+    return failure(400, "payload_too_large");
+  }
 
   const honeypot = config.honeypotField ?? config.form.security?.honeypotField ?? "company_website";
   if (typeof payload.values[honeypot] === "string" && payload.values[honeypot] !== "") {

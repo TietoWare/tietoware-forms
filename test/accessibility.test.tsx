@@ -58,7 +58,7 @@ const acceptanceForm = {
 describe("accessible form", () => {
   it("connects visible fields to labels", async () => {
     const { screen, render } = await createDOM();
-    await render(<TietoWareForm form={form} interactionToken="token" onSubmit$={$(() => Promise.resolve({ ok: true }))} /> as JSXNode);
+    await render(<TietoWareForm form={form} interactionToken="token" onSubmit$={$(() => Promise.resolve({ ok: true, data: { submission_id: 1, status: "received" as const } }))} /> as JSXNode);
     for (const input of screen.querySelectorAll("input, textarea")) {
       expect(input.id).not.toBe("");
       expect(screen.querySelector(`label[for=\"${input.id}\"]`)).not.toBeNull();
@@ -67,7 +67,7 @@ describe("accessible form", () => {
 
   it("reports errors, focuses the first field and retains entered values", async () => {
     const { screen, render, userEvent } = await createDOM();
-    await render(<TietoWareForm form={form} interactionToken="token" onSubmit$={$(() => Promise.resolve({ ok: true }))} /> as JSXNode);
+    await render(<TietoWareForm form={form} interactionToken="token" onSubmit$={$(() => Promise.resolve({ ok: true, data: { submission_id: 1, status: "received" as const } }))} /> as JSXNode);
 
     const message = screen.querySelector("textarea") as HTMLTextAreaElement;
     message.value = "Säilyvä viesti";
@@ -96,7 +96,7 @@ describe("accessible form", () => {
   it("renders the API honeypot outside the JSON Schema fields", async () => {
     const protectedForm = { ...form, security: { honeypotField: "website" } };
     const { screen, render } = await createDOM();
-    await render(<TietoWareForm form={protectedForm} interactionToken="token" onSubmit$={$(() => Promise.resolve({ ok: true }))} /> as JSXNode);
+    await render(<TietoWareForm form={protectedForm} interactionToken="token" onSubmit$={$(() => Promise.resolve({ ok: true, data: { submission_id: 1, status: "received" as const } }))} /> as JSXNode);
 
     const honeypot = screen.querySelector("input[name=website]") as HTMLInputElement;
     expect(honeypot).not.toBeNull();
@@ -106,7 +106,7 @@ describe("accessible form", () => {
 
   it("renders a checkbox control before enum handling and validates acceptance with const", async () => {
     const { screen, render, userEvent } = await createDOM();
-    await render(<TietoWareForm form={acceptanceForm} interactionToken="token" onSubmit$={$(() => Promise.resolve({ ok: true }))} /> as JSXNode);
+    await render(<TietoWareForm form={acceptanceForm} interactionToken="token" onSubmit$={$(() => Promise.resolve({ ok: true, data: { submission_id: 1, status: "received" as const } }))} /> as JSXNode);
 
     const privacy = screen.querySelector("input[name=privacyAccepted]") as HTMLInputElement;
     expect(privacy).not.toBeNull();
@@ -131,5 +131,34 @@ describe("accessible form", () => {
       privacyAccepted: ["Täytä tämä kenttä."],
       termsAccepted: ["Täytä tämä kenttä."]
     });
+  });
+
+  it("preserves enum value types and keeps field ids collision-safe", async () => {
+    const selectForm = {
+      id: "323e4567-e89b-42d3-a456-426614174000",
+      checksum: "a".repeat(64),
+      schema: {
+        type: "object" as const,
+        properties: {
+          "a.b": { type: "number" as const, enum: [1, 2] },
+          "a-b": { type: "string" as const, enum: ["one", "two"] }
+        },
+        required: ["a.b", "a-b"],
+        additionalProperties: false
+      },
+      ui: {},
+      controls: {}
+    } satisfies GeneratedForm;
+    const { screen, render } = await createDOM();
+    await render(<TietoWareForm form={selectForm} interactionToken="token" onSubmit$={$(() => Promise.resolve({ ok: true, data: { submission_id: 1, status: "received" as const } }))} /> as JSXNode);
+
+    const fields = screen.querySelectorAll("select");
+    expect(fields).toHaveLength(2);
+    const numericField = screen.querySelector('select[name="a.b"]') as HTMLSelectElement;
+    expect(numericField.options[1]?.value).toBe("1");
+    expect(numericField.options[2]?.value).toBe("2");
+    expect(validateFormValues(selectForm, { "a.b": 2, "a-b": "one" })).toEqual({});
+    expect(validateFormValues(selectForm, { "a.b": "2", "a-b": "one" })).toHaveProperty("a.b");
+    expect(new Set([fields[0]?.id, fields[1]?.id]).size).toBe(2);
   });
 });

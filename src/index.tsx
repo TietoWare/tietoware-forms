@@ -17,11 +17,9 @@ import type {
   SubmissionSuccess
 } from "./types.js";
 
-export interface ClientSubmissionResult {
-  ok: boolean;
-  data?: SubmissionSuccess;
-  error?: FormApiError;
-}
+export type ClientSubmissionResult =
+  | { ok: true; data: SubmissionSuccess }
+  | { ok: false; error: FormApiError };
 
 export interface TietoWareFormProps {
   form: GeneratedForm;
@@ -206,7 +204,7 @@ const FormControl = component$<FormControlProps>((props) => {
 
   if (props.control.control === "select" || props.property.enum) {
     return (
-      <select {...common} value={stringValue(props.value)} onInput$={(_, element) => props.onValue$(element.value)}>
+      <select {...common} value={stringValue(props.value)} onInput$={(_, element) => props.onValue$(coerceSelectValue(element.value, props.property.enum))}>
         <option value="">Valitse</option>
         {(props.property.enum ?? []).map((option) => (
           <option key={String(option)} value={String(option)}>{String(option)}</option>
@@ -253,7 +251,7 @@ function groupAjvErrors(errors: ErrorObject[]): Record<string, string[]> {
       : undefined;
     const field = typeof requiredField === "string"
       ? requiredField
-      : error.instancePath.replace(/^\//, "").split("/")[0];
+      : decodeJsonPointerSegment(error.instancePath.replace(/^\//, "").split("/")[0] ?? "");
     if (!field) continue;
     (grouped[field] ??= []).push(validationMessage(error));
   }
@@ -281,7 +279,7 @@ function groupErrors(errors: FieldError[]): Record<string, string[]> {
 function orderedFields(form: GeneratedForm) {
   return Object.entries(form.schema.properties).sort(([nameA], [nameB]) =>
     (form.controls[nameA]?.order ?? Number.MAX_SAFE_INTEGER) - (form.controls[nameB]?.order ?? Number.MAX_SAFE_INTEGER)
-      || nameA.localeCompare(nameB)
+      || compareOrdinal(nameA, nameB)
   );
 }
 
@@ -309,8 +307,16 @@ function inputType(format: string | undefined, type: string | undefined): string
 }
 
 function coerceValue(value: string, type: string | undefined): JsonPrimitive {
-  if ((type === "number" || type === "integer") && value !== "") return Number(value);
+  if ((type === "number" || type === "integer") && value !== "") {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : value;
+  }
   return value;
+}
+
+function coerceSelectValue(value: string, options: JsonPrimitive[] | undefined): JsonPrimitive {
+  const match = options?.find((option) => String(option) === value);
+  return match === undefined ? value : match;
 }
 
 function stringValue(value: JsonPrimitive | undefined): string {
@@ -323,7 +329,15 @@ function focusField(formElement: Pick<HTMLElement, "ownerDocument">, formId: str
 }
 
 function safeId(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_-]/g, "-");
+  return Array.from(value, (character) => (character.codePointAt(0) ?? 0).toString(16)).join("-") || "empty";
+}
+
+function decodeJsonPointerSegment(value: string): string {
+  return value.replace(/~1/g, "/").replace(/~0/g, "~");
+}
+
+function compareOrdinal(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
