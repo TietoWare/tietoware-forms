@@ -100,6 +100,27 @@ describe("schema generator", () => {
     expect(form.security).toEqual({ honeypotField: "website", minimumInteractionMs: 3_000, maxPayloadBytes: 16_384 });
   });
 
+  it("preserves boolean const constraints through schema validation and generation", () => {
+    const acceptancePayload = {
+      schema: {
+        ...publicPayload.schema,
+        properties: {
+          ...publicPayload.schema.properties,
+          privacyAccepted: { type: "boolean" as const, const: true }
+        },
+        required: ["email", "privacyAccepted"]
+      },
+      ui: publicPayload.ui,
+      controls: { ...publicPayload.controls, privacyAccepted: { control: "checkbox" as const } }
+    };
+    const response = { id: formId, checksum: checksumFor(acceptancePayload), ...acceptancePayload };
+    const generated = validateSchemaResponse(response);
+
+    expect(generated.schema.properties.privacyAccepted).toMatchObject({ type: "boolean", const: true });
+    expect(checksumFor({ schema: generated.schema, ui: generated.ui, controls: generated.controls })).toBe(response.checksum);
+    expect(renderGeneratedModule(generated)).toContain('"const":true');
+  });
+
   it("accepts the Kotivalmis API checksum test vector", async () => {
     const fixture = JSON.parse(await readFile(new URL("./fixtures/kotivalmis-schema.json", import.meta.url), "utf8"));
     const form = validateSchemaResponse(fixture);

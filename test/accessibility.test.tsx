@@ -1,7 +1,7 @@
 import { $, type JSXNode } from "@builder.io/qwik";
 import { createDOM } from "@builder.io/qwik/testing";
 import { describe, expect, it, vi } from "vitest";
-import { TietoWareForm, validateFormValues } from "../src/index.js";
+import { TietoWareForm, validateFormValues, type FormValues, type GeneratedForm } from "../src/index.js";
 import { checksumFor } from "../src/generate.js";
 
 const publicPayload = {
@@ -24,6 +24,36 @@ const form = {
   checksum: checksumFor(publicPayload),
   ...publicPayload
 };
+
+const acceptancePublicPayload = {
+  schema: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object" as const,
+    properties: {
+      privacyAccepted: {
+        type: "boolean" as const,
+        const: true,
+        enum: [true, false]
+      },
+      termsAccepted: {
+        type: "boolean" as const,
+        const: true
+      }
+    },
+    required: ["privacyAccepted", "termsAccepted"],
+    additionalProperties: false
+  },
+  ui: {},
+  controls: {
+    privacyAccepted: { control: "checkbox" as const, label: "Tietosuojaseloste" },
+    termsAccepted: { control: "checkbox" as const, label: "Käyttöehdot" }
+  }
+};
+const acceptanceForm = {
+  id: "223e4567-e89b-42d3-a456-426614174000",
+  checksum: checksumFor(acceptancePublicPayload),
+  ...acceptancePublicPayload
+} satisfies GeneratedForm;
 
 describe("accessible form", () => {
   it("connects visible fields to labels", async () => {
@@ -54,6 +84,9 @@ describe("accessible form", () => {
   });
 
   it("validates required and formatted fields", () => {
+    expect(validateFormValues(form, { message: "Hei" } as FormValues)).toEqual({
+      email: ["Täytä tämä kenttä."]
+    });
     expect(validateFormValues(form, { email: "not-email", message: "" })).toEqual({
       email: ["Tarkista kentän muoto."],
       message: ["Arvo on liian lyhyt."]
@@ -69,5 +102,34 @@ describe("accessible form", () => {
     expect(honeypot).not.toBeNull();
     expect(honeypot.autocomplete).toBe("off");
     expect(validateFormValues(protectedForm, { email: "hello@example.fi", message: "Hei", website: "" })).toEqual({});
+  });
+
+  it("renders a checkbox control before enum handling and validates acceptance with const", async () => {
+    const { screen, render, userEvent } = await createDOM();
+    await render(<TietoWareForm form={acceptanceForm} interactionToken="token" onSubmit$={$(() => Promise.resolve({ ok: true }))} /> as JSXNode);
+
+    const privacy = screen.querySelector("input[name=privacyAccepted]") as HTMLInputElement;
+    expect(privacy).not.toBeNull();
+    expect(privacy.type).toBe("checkbox");
+    expect(screen.querySelector("select[name=privacyAccepted]")).toBeFalsy();
+    expect(privacy.required).toBe(true);
+    expect(screen.querySelector(`label[for="${privacy.id}"]`)).not.toBeNull();
+
+    await userEvent(screen.querySelector("form") as HTMLFormElement, "submit");
+
+    expect(privacy.getAttribute("aria-invalid")).toBe("true");
+    expect(privacy.getAttribute("aria-describedby")).toContain(`${privacy.id}-error`);
+    expect(screen.querySelector(`[id="${privacy.id}-error"]`)?.textContent).toContain("Tarkista");
+  });
+
+  it("accepts true and rejects false according to the JSON Schema", () => {
+    expect(validateFormValues(acceptanceForm, { privacyAccepted: false, termsAccepted: true })).toEqual({
+      privacyAccepted: ["Tarkista kentän arvo."]
+    });
+    expect(validateFormValues(acceptanceForm, { privacyAccepted: true, termsAccepted: true })).toEqual({});
+    expect(validateFormValues(acceptanceForm, {} as FormValues)).toEqual({
+      privacyAccepted: ["Täytä tämä kenttä."],
+      termsAccepted: ["Täytä tämä kenttä."]
+    });
   });
 });

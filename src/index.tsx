@@ -193,6 +193,17 @@ const FormControl = component$<FormControlProps>((props) => {
     );
   }
 
+  if (props.control.control === "checkbox") {
+    return (
+      <input
+        {...common}
+        type="checkbox"
+        checked={props.value === true}
+        onInput$={(_, element) => props.onValue$(element.checked)}
+      />
+    );
+  }
+
   if (props.control.control === "select" || props.property.enum) {
     return (
       <select {...common} value={stringValue(props.value)} onInput$={(_, element) => props.onValue$(element.value)}>
@@ -204,7 +215,7 @@ const FormControl = component$<FormControlProps>((props) => {
     );
   }
 
-  if (props.control.control === "checkbox" || props.property.type === "boolean") {
+  if (props.property.type === "boolean") {
     return (
       <input
         {...common}

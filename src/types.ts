@@ -10,6 +10,8 @@ export interface JsonSchemaProperty {
   title?: string;
   description?: string;
   default?: JsonPrimitive;
+  /** JSON Schema value that the property must equal when it is present. */
+  const?: JsonValue;
   enum?: JsonPrimitive[];
   format?: string;
   minLength?: number;

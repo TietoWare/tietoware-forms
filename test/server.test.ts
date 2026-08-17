@@ -40,6 +40,42 @@ const apiForm = {
   security: { honeypotField: "website", minimumInteractionMs: 3_000, maxPayloadBytes: 512 }
 };
 
+const acceptanceForm = {
+  id: form.id,
+  checksum: checksumFor({
+    schema: {
+      type: "object" as const,
+      properties: {
+        email: { type: "string" as const, format: "email" },
+        privacyAccepted: { type: "boolean" as const, const: true },
+        termsAccepted: { type: "boolean" as const, const: true }
+      },
+      required: ["email", "privacyAccepted", "termsAccepted"],
+      additionalProperties: false
+    },
+    ui: {},
+    controls: {
+      privacyAccepted: { control: "checkbox" as const },
+      termsAccepted: { control: "checkbox" as const }
+    }
+  }),
+  schema: {
+    type: "object" as const,
+    properties: {
+      email: { type: "string" as const, format: "email" },
+      privacyAccepted: { type: "boolean" as const, const: true },
+      termsAccepted: { type: "boolean" as const, const: true }
+    },
+    required: ["email", "privacyAccepted", "termsAccepted"],
+    additionalProperties: false
+  },
+  ui: {},
+  controls: {
+    privacyAccepted: { control: "checkbox" as const },
+    termsAccepted: { control: "checkbox" as const }
+  }
+};
+
 function config(fetch: typeof globalThis.fetch): FormServerConfig {
   return { apiUrl: "https://app.example.fi/api", keyId: "key-id", secret, form, fetch, now: () => now };
 }
@@ -104,5 +140,29 @@ describe("Qwik City submission", () => {
       .resolves.toMatchObject({ ok: false, error: { code: "invalid_interaction" } });
     await expect(submitForm({ values: { email: "x".repeat(800), website: "" }, interactionToken: oldToken }, apiConfig))
       .resolves.toMatchObject({ ok: false, error: { code: "payload_too_large" } });
+  });
+
+  it("rejects a missing acceptance before POST and accepts only true values server-side", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json(
+      { submission_id: 44, status: "received" }, { status: 201 }
+    ));
+    const acceptanceConfig: FormServerConfig = { ...config(fetch), form: acceptanceForm };
+    const acceptanceToken = createInteractionToken({ formId: acceptanceForm.id, startedAt: now - 2_000, nonce: "acceptance-nonce" }, secret);
+
+    await expect(submitForm({
+      values: { email: "hello@example.fi", privacyAccepted: false, termsAccepted: true },
+      interactionToken: acceptanceToken
+    }, acceptanceConfig)).resolves.toMatchObject({
+      ok: false,
+      status: 422,
+      error: { code: "validation_failed" }
+    });
+    expect(fetch).not.toHaveBeenCalled();
+
+    await expect(submitForm({
+      values: { email: "hello@example.fi", privacyAccepted: true, termsAccepted: true },
+      interactionToken: acceptanceToken
+    }, acceptanceConfig)).resolves.toMatchObject({ ok: true, status: 201 });
+    expect(fetch).toHaveBeenCalledOnce();
   });
 });
