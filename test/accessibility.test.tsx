@@ -83,6 +83,65 @@ describe("accessible form", () => {
     expect(message.value).toBe("Säilyvä viesti");
   });
 
+  it("clears all field values after a successful submission", async () => {
+    const successForm = {
+      id: "423e4567-e89b-42d3-a456-426614174000",
+      checksum: "b".repeat(64),
+      schema: {
+        type: "object" as const,
+        properties: {
+          name: { type: "string" as const, default: "Default name" },
+          message: { type: "string" as const },
+          category: { type: "string" as const, enum: ["one", "two"] },
+          accepted: { type: "boolean" as const },
+          metadata: { type: "string" as const }
+        },
+        required: ["name", "message", "category", "accepted"],
+        additionalProperties: false
+      },
+      ui: { successMessage: "Sent" },
+      controls: {
+        message: { control: "textarea" as const },
+        category: { control: "select" as const },
+        accepted: { control: "checkbox" as const },
+        metadata: { control: "hidden" as const }
+      },
+      security: { honeypotField: "website" }
+    } satisfies GeneratedForm;
+    const { screen, render, userEvent } = await createDOM();
+    await render(<TietoWareForm form={successForm} interactionToken="token" onSubmit$={$(() => Promise.resolve({ ok: true, data: { submission_id: 1, status: "received" as const } }))} initialValues={{ metadata: "hidden-value", website: "" }} /> as JSXNode);
+
+    const name = screen.querySelector("input[name=name]") as HTMLInputElement;
+    const message = screen.querySelector("textarea[name=message]") as HTMLTextAreaElement;
+    const category = screen.querySelector("select[name=category]") as HTMLSelectElement;
+    const accepted = screen.querySelector("input[name=accepted]") as HTMLInputElement;
+    const metadata = screen.querySelector("input[name=metadata]") as HTMLInputElement;
+    const honeypot = screen.querySelector("input[name=website]") as HTMLInputElement;
+
+    name.value = "Submitted name";
+    await userEvent(name, "input");
+    message.value = "Submitted message";
+    await userEvent(message, "input");
+    category.value = "two";
+    await userEvent(category, "input");
+    accepted.checked = true;
+    await userEvent(accepted, "input");
+    metadata.value = "changed-hidden-value";
+    await userEvent(metadata, "input");
+    honeypot.value = "changed-honeypot";
+    await userEvent(honeypot, "input");
+
+    await userEvent(screen.querySelector("form") as HTMLFormElement, "submit");
+
+    expect(name.value).toBe("");
+    expect(message.value).toBe("");
+    expect(category.value).toBe("");
+    expect(accepted.checked).toBe(false);
+    expect(metadata.value).toBe("");
+    expect(honeypot.value).toBe("");
+    expect(screen.querySelector("[role=status]")?.textContent).toContain("Sent");
+  });
+
   it("validates required and formatted fields", () => {
     expect(validateFormValues(form, { message: "Hei" } as FormValues)).toEqual({
       email: ["Täytä tämä kenttä."]
