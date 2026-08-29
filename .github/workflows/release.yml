@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   publish:
@@ -21,7 +20,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          registry-url: https://npm.pkg.github.com
+          registry-url: https://registry.npmjs.org
           scope: "@tietoware"
 
       - name: Verify tag matches package version
@@ -40,11 +39,11 @@ jobs:
       - run: npm run build
       - run: npm run pack:check
 
-      - run: npm publish
+      - run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Verify published package
-        run: npm view "@tietoware/forms@${GITHUB_REF_NAME#v}" version --registry=https://npm.pkg.github.com
+        run: npm view "@tietoware/forms@${GITHUB_REF_NAME#v}" version --registry=https://registry.npmjs.org
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

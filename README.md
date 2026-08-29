@@ -7,22 +7,18 @@ Schema-driven, accessible Qwik City forms for TietoWare App. The package keeps b
 - Node.js 20 or newer
 - Qwik and Qwik City 1.8 or newer
 - A TietoWare App form and integration key
-- A GitHub token with `read:packages` for installation
 
 ## Install
 
-Add the registry to the consuming project's `.npmrc`:
-
-```ini
-@tietoware:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_READ_TOKEN}
-```
-
-Then install the package:
+The package is published as a public package to the npm registry. No GitHub or npm access token is required for installation:
 
 ```bash
 npm install @tietoware/forms
 ```
+
+## Publish
+
+Releases are published to the public npm registry by the tagged-release workflow. Configure an `NPM_TOKEN` repository secret with permission to publish `@tietoware/forms`. The token is used only by the release workflow; package installation does not require a token.
 
 ## Generate the form artifact
 

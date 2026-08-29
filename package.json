@@ -1,6 +1,6 @@
 {
   "name": "@tietoware/forms",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Schema-driven Qwik City forms for TietoWare App",
   "type": "module",
   "license": "MIT",
@@ -35,8 +35,8 @@
     "tietoware-forms": "./dist/cli.js"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
-    "access": "restricted"
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
   },
   "sideEffects": false,
   "engines": {
