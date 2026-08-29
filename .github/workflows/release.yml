@@ -44,6 +44,17 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Verify published package
-        run: npm view "@tietoware/forms@${GITHUB_REF_NAME#v}" version --registry=https://registry.npmjs.org
+        shell: bash
+        run: |
+          PACKAGE_VERSION="${GITHUB_REF_NAME#v}"
+          for attempt in {1..12}; do
+            if npm view "@tietoware/forms@${PACKAGE_VERSION}" version --registry=https://registry.npmjs.org; then
+              exit 0
+            fi
+            echo "Version ${PACKAGE_VERSION} is not visible on npm yet (attempt ${attempt}/12); retrying in 10 seconds."
+            sleep 10
+          done
+          echo "Version ${PACKAGE_VERSION} was not found on npm after waiting for publication to propagate." >&2
+          exit 1
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
