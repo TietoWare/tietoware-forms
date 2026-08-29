@@ -92,7 +92,7 @@ import { createInteractionToken } from "@tietoware/forms/server";
 
 const token = createInteractionToken({
   formId: form.id,
-  startedAt: Date.now(),
+  startedAt: Math.floor(Date.now() / 1000),
   nonce: randomUUID()
 }, process.env.TIETOWARE_FORMS_HMAC_SECRET!);
 ```

@@ -71,10 +71,10 @@ export async function submitForm(payload: unknown, config: FormServerConfig): Pr
   if (unknownField) return failure(400, "unknown_field");
 
   const token = verifyInteractionToken(payload.interactionToken, config.secret);
-  const now = (config.now ?? Date.now)();
-  const minimumAge = config.minimumInteractionMs ?? config.form.security?.minimumInteractionMs ?? 800;
-  const maximumAge = config.interactionMaxAgeMs ?? 2 * 60 * 60 * 1000;
-  if (!token || token.formId !== config.form.id || token.startedAt > now - minimumAge || token.startedAt < now - maximumAge) {
+  const nowSeconds = Math.floor((config.now ?? Date.now)() / 1000);
+  const minimumAgeSeconds = Math.ceil((config.minimumInteractionMs ?? config.form.security?.minimumInteractionMs ?? 800) / 1000);
+  const maximumAgeSeconds = Math.floor((config.interactionMaxAgeMs ?? 60 * 60 * 1000) / 1000);
+  if (!token || token.formId !== config.form.id || token.startedAt > nowSeconds - minimumAgeSeconds || token.startedAt < nowSeconds - maximumAgeSeconds) {
     return failure(400, "invalid_interaction");
   }
 

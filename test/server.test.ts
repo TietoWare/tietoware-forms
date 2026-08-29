@@ -4,6 +4,7 @@ import { createInteractionToken } from "../src/hmac.js";
 import { submitForm, type FormServerConfig } from "../src/server.js";
 
 const now = Date.UTC(2026, 7, 1, 18, 0, 0);
+const nowSeconds = Math.floor(now / 1000);
 const secret = "test-secret";
 const publicPayload = {
   schema: {
@@ -24,7 +25,7 @@ const form = {
   checksum: checksumFor(publicPayload),
   ...publicPayload
 };
-const token = createInteractionToken({ formId: form.id, startedAt: now - 2_000, nonce: "interaction-nonce" }, secret);
+const token = createInteractionToken({ formId: form.id, startedAt: nowSeconds - 2, nonce: "interaction-nonce" }, secret);
 
 const apiForm = {
   id: form.id,
@@ -127,7 +128,7 @@ describe("Qwik City submission", () => {
       { submission_id: 43, status: "received" }, { status: 201 }
     ));
     const apiConfig: FormServerConfig = { ...config(fetch), form: apiForm };
-    const oldToken = createInteractionToken({ formId: apiForm.id, startedAt: now - 3_000, nonce: "api-nonce" }, secret);
+    const oldToken = createInteractionToken({ formId: apiForm.id, startedAt: nowSeconds - 3, nonce: "api-nonce" }, secret);
 
     await expect(submitForm({ values: { email: "a@b.fi", website: "bot" }, interactionToken: oldToken }, apiConfig))
       .resolves.toMatchObject({ ok: false, error: { code: "bot_detected" } });
@@ -135,11 +136,24 @@ describe("Qwik City submission", () => {
       .resolves.toMatchObject({ ok: true });
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({ values: { email: "a@b.fi" } });
 
-    const tooEarlyToken = createInteractionToken({ formId: apiForm.id, startedAt: now - 2_999, nonce: "early-nonce" }, secret);
+    const tooEarlyToken = createInteractionToken({ formId: apiForm.id, startedAt: nowSeconds - 2, nonce: "early-nonce" }, secret);
     await expect(submitForm({ values: { email: "a@b.fi", website: "" }, interactionToken: tooEarlyToken }, apiConfig))
       .resolves.toMatchObject({ ok: false, error: { code: "invalid_interaction" } });
     await expect(submitForm({ values: { email: "x".repeat(800), website: "" }, interactionToken: oldToken }, apiConfig))
       .resolves.toMatchObject({ ok: false, error: { code: "payload_too_large" } });
+  });
+
+  it("matches the API interaction-token maximum age", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json(
+      { submission_id: 45, status: "received" }, { status: 201 }
+    ));
+    const atLimit = createInteractionToken({ formId: form.id, startedAt: nowSeconds - 3_600, nonce: "limit-nonce" }, secret);
+    const expired = createInteractionToken({ formId: form.id, startedAt: nowSeconds - 3_601, nonce: "expired-nonce" }, secret);
+
+    await expect(submitForm({ values: { email: "a@b.fi", company_website: "" }, interactionToken: atLimit }, config(fetch)))
+      .resolves.toMatchObject({ ok: true });
+    await expect(submitForm({ values: { email: "a@b.fi", company_website: "" }, interactionToken: expired }, config(fetch)))
+      .resolves.toMatchObject({ ok: false, error: { code: "invalid_interaction" } });
   });
 
   it("rejects a missing acceptance before POST and accepts only true values server-side", async () => {
@@ -147,7 +161,7 @@ describe("Qwik City submission", () => {
       { submission_id: 44, status: "received" }, { status: 201 }
     ));
     const acceptanceConfig: FormServerConfig = { ...config(fetch), form: acceptanceForm };
-    const acceptanceToken = createInteractionToken({ formId: acceptanceForm.id, startedAt: now - 2_000, nonce: "acceptance-nonce" }, secret);
+    const acceptanceToken = createInteractionToken({ formId: acceptanceForm.id, startedAt: nowSeconds - 2, nonce: "acceptance-nonce" }, secret);
 
     await expect(submitForm({
       values: { email: "hello@example.fi", privacyAccepted: false, termsAccepted: true },
