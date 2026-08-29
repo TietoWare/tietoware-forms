@@ -54,6 +54,7 @@ export const TietoWareForm = component$<TietoWareFormProps>((props) => {
     try {
       const result = await props.onSubmit$({ ...state.values }, props.interactionToken);
       if (result.ok) {
+        state.values = emptyFormValues(props.form);
         state.succeeded = true;
         return;
       }
@@ -289,6 +290,15 @@ function initialFormValues(form: GeneratedForm, initial: FormValues | undefined)
     initial?.[name] ?? property.default ?? (property.type === "boolean" ? false : "")
   ])) as FormValues;
   if (form.security?.honeypotField) values[form.security.honeypotField] = initial?.[form.security.honeypotField] ?? "";
+  return values;
+}
+
+function emptyFormValues(form: GeneratedForm): FormValues {
+  const values = Object.fromEntries(Object.entries(form.schema.properties).map(([name, property]) => [
+    name,
+    property.type === "boolean" ? false : ""
+  ])) as FormValues;
+  if (form.security?.honeypotField) values[form.security.honeypotField] = "";
   return values;
 }
 
